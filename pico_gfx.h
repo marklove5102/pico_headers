@@ -512,7 +512,7 @@ typedef enum
  */
 typedef enum
 {
-    PG_PIXEL_FORMAT_NONE,
+    PG_PIXEL_FORMAT_DEFAULT,
     PG_PIXEL_FORMAT_RED,
     PG_PIXEL_FORMAT_RGBA,
     PG_PIXEL_FORMAT_BGRA,
@@ -1952,11 +1952,11 @@ static sg_pixel_format pg_map_pixel_format(pg_pixel_format_t format)
 {
     switch (format)
     {
-        case PG_PIXEL_FORMAT_NONE:  return SG_PIXELFORMAT_NONE;
-        case PG_PIXEL_FORMAT_RED:   return SG_PIXELFORMAT_R8;
-        case PG_PIXEL_FORMAT_RGBA:  return SG_PIXELFORMAT_RGBA8;
-        case PG_PIXEL_FORMAT_BGRA:  return SG_PIXELFORMAT_BGRA8;
-        case PG_PIXEL_FORMAT_SRGBA: return SG_PIXELFORMAT_SRGB8A8;
+        case PG_PIXEL_FORMAT_DEFAULT: return SG_PIXELFORMAT_RGBA8;
+        case PG_PIXEL_FORMAT_RED:     return SG_PIXELFORMAT_R8;
+        case PG_PIXEL_FORMAT_RGBA:    return SG_PIXELFORMAT_RGBA8;
+        case PG_PIXEL_FORMAT_BGRA:    return SG_PIXELFORMAT_BGRA8;
+        case PG_PIXEL_FORMAT_SRGBA:   return SG_PIXELFORMAT_SRGB8A8;
         default: PICO_GFX_ASSERT(false); return SG_PIXELFORMAT_NONE;
     }
 }
