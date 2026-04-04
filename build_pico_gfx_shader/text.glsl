@@ -2,7 +2,7 @@
 @glsl_options flip_vert_y
 
 layout(location = 0) in vec3 a_pos;
-layout(location = 2) in vec2 a_uv;
+layout(location = 1) in vec2 a_uv;
 
 layout(binding = 0) uniform vs_block {
     mat4 u_mvp;
