@@ -21,7 +21,7 @@ endif
 
 DEPS   = ../pico_gfx.h
 
-all: quad scenegraph particles
+all: quad scenegraph particles text
 
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
@@ -34,6 +34,9 @@ scenegraph: scenegraph.o $(DEPS)
 
 particles: particles.o $(DEPS)
 	$(CC) -o particles particles.o $(CLIBS)
+
+text: text.o $(DEPS)
+	$(CC) -o text text.o $(CLIBS)
 
 .PHONY: clean
 

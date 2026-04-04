@@ -25,8 +25,8 @@ layout(binding = 1) uniform fs_block {
     vec3 u_color;
 };
 
-layout (binding = 1) uniform texture2D u_tex;
-layout (binding = 2) uniform sampler   u_smp;
+layout (binding = 0) uniform texture2D u_tex;
+layout (binding = 1) uniform sampler   u_smp;
 
 out vec4 frag_color;
 
