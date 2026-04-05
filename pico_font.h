@@ -218,6 +218,25 @@ void pf_measure_text(pf_face_t* face, const char* text,
                      float* out_width, float* out_height);
 
 /**
+ * @brief Vertical font metrics for a face.
+ */
+typedef struct
+{
+    float ascent;      /**< Distance from baseline to top of tallest glyph. */
+    float descent;     /**< Distance from baseline to bottom (typically negative). */
+    float line_gap;    /**< Extra spacing between lines. */
+    float line_height; /**< Recommended line advance (ascent - descent + line_gap). */
+} pf_font_metrics_t;
+
+/**
+ * @brief Retrieve vertical font metrics for a face.
+ *
+ * @param face     Face to query.
+ * @param metrics  Receives the metrics. Must not be NULL.
+ */
+void pf_get_font_metrics(const pf_face_t* face, pf_font_metrics_t* metrics);
+
+/**
  * @brief Get the horizontal kerning adjustment between two codepoints.
  *
  * @param face  Face to query.
@@ -622,6 +641,17 @@ const pf_glyph_t* pf_get_glyph(pf_face_t* face, uint32_t codepoint)
 
     pf_cache_insert(atlas, key, index);
     return &atlas->glyphs[index];
+}
+
+void pf_get_font_metrics(const pf_face_t* face, pf_font_metrics_t* metrics)
+{
+    PICO_FONT_ASSERT(face != NULL);
+    PICO_FONT_ASSERT(metrics != NULL);
+
+    metrics->ascent      = (float)face->ascent;
+    metrics->descent     = (float)face->descent;
+    metrics->line_gap    = (float)face->line_gap;
+    metrics->line_height = (float)(face->ascent - face->descent + face->line_gap);
 }
 
 float pf_get_kerning(const pf_face_t* face, uint32_t cp1, uint32_t cp2)
