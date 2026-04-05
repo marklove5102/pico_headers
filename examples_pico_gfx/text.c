@@ -169,12 +169,16 @@ int main(int argc, char *argv[])
     // Generate text geometry using pico_font
     text_batch_t batch = { .count = 0 };
 
-    const char* lines[] = { "Hello, World!", "Pico Font + Pico GFX" };
+
+    #define LINE1 "Hello, World!"
+    #define LINE2 "Pico Font + Pico GFX"
+
+    const char* lines[] = { LINE1, LINE2 };
     int num_lines = 2;
 
     // Measure total height using the full multiline string
     float total_h;
-    pf_measure_text(face, "Hello, World!\nPico Font + Pico GFX", NULL, &total_h);
+    pf_measure_text(face, LINE1"\n"LINE2, NULL, &total_h);
 
     pf_font_metrics_t metrics;
     pf_get_font_metrics(face, &metrics);
