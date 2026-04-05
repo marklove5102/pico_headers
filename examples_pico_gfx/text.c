@@ -180,8 +180,9 @@ int main(int argc, char *argv[])
     float total_h;
     pf_measure_text(face, LINE1"\n"LINE2, NULL, &total_h);
 
-    pf_font_metrics_t metrics;
+    pf_font_metrics_t metrics = { 0 };
     pf_get_font_metrics(face, &metrics);
+
     float line_height = metrics.line_height;
     float cur_y = pixel_h / 2.f - total_h / 2.f;
 
