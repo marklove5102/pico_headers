@@ -44,6 +44,7 @@
 #ifndef PICO_FONT_H
 #define PICO_FONT_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -178,7 +179,8 @@ const pf_glyph_t* pf_get_glyph(pf_face_t* face, uint32_t codepoint);
  *
  * For each visible glyph the callback receives a screen-space quad with atlas
  * UVs and a page index. Kerning is applied automatically between adjacent
- * codepoints. Newline characters (\n) reset *x to 0 and advance *y.
+ * codepoints. Newline characters (\n) reset *x to its initial value and
+ * advance *y.
  *
  * @param face  Face to use.
  * @param text  Null-terminated UTF-8 string.
@@ -245,6 +247,49 @@ void pf_get_font_metrics(const pf_face_t* face, pf_font_metrics_t* metrics);
  * @return Kerning offset in pixels (typically negative for tighter pairs).
  */
 float pf_get_kerning(const pf_face_t* face, uint32_t cp1, uint32_t cp2);
+
+/**
+ * @brief Text alignment mode for pf_draw_text_ex.
+ */
+typedef enum
+{
+    PF_ALIGN_LEFT   = 0, /**< Left-aligned (default). */
+    PF_ALIGN_CENTER = 1, /**< Centered within wrap_width. */
+    PF_ALIGN_RIGHT  = 2  /**< Right-aligned within wrap_width. */
+} pf_align_t;
+
+/**
+ * @brief Extended layout options for pf_draw_text_ex.
+ */
+typedef struct
+{
+    float      origin_x;  /**< Left edge for newline/wrap reset. */
+    float      wrap_width; /**< 0 = no word wrap; >0 = wrap and alignment width. */
+    pf_align_t alignment; /**< Text alignment (requires wrap_width > 0). */
+} pf_layout_t;
+
+/**
+ * @brief Lay out and emit quads for a UTF-8 string with extended options.
+ *
+ * Like pf_draw_text but supports word wrapping and text alignment. The text
+ * is laid out starting at (*x, *y). On newline or word-wrap, *x resets to
+ * @p layout->origin_x. When @p layout->wrap_width is positive, lines that would
+ * exceed that width are broken at the last whitespace boundary (or at the
+ * current glyph if no break point exists). Alignment is applied per-line
+ * relative to origin_x and wrap_width.
+ *
+ * @param face  Face to use.
+ * @param text  Null-terminated UTF-8 string.
+ * @param x     In/out cursor X position.
+ * @param y     In/out cursor Y position.
+ * @param layout  Layout options. Must not be NULL.
+ * @param cb    Callback invoked for each visible glyph quad. May be NULL.
+ * @param user  Opaque pointer forwarded to @p cb.
+ */
+void pf_draw_text_ex(pf_face_t* face, const char* text,
+                     float* x, float* y,
+                     const pf_layout_t* layout,
+                     pf_draw_callback_fn cb, void* user);
 
 #ifdef __cplusplus
 }
@@ -321,7 +366,7 @@ typedef struct
 {
     unsigned char* pixels;
     int            width, height;
-    int            dirty;       // set to 1 whenever pixels are modified
+    bool           dirty;       // set to true whenever pixels are modified
     pf_shelf_t     shelf;
 } pf_atlas_page_t;
 
@@ -363,6 +408,14 @@ typedef struct
     float max_x;
     float max_y;
 } pf_measure_state_t;
+
+// Dynamic quad buffer for line-based text layout (used by pf_walk_text_ex).
+typedef struct
+{
+    pf_quad_t* items;
+    size_t     count;
+    size_t     capacity;
+} pf_quad_buf_t;
 
 // ---- Forward declarations ---------------------------------------------------
 
@@ -411,6 +464,20 @@ static void pf_walk_text(pf_face_t* face, const char* text,
 
 // Quad callback used by pf_measure_text to track bounding box extents.
 static int pf_measure_cb(const pf_quad_t* quad, void* user);
+
+// Push a quad into the line buffer, growing it if needed.
+static int pf_quad_buf_push(pf_quad_buf_t* buf, const pf_quad_t* q);
+
+// Emit buffered quads for one line with alignment applied.
+static void pf_emit_line(const pf_quad_buf_t* buf, size_t start, size_t end,
+                         float line_width, const pf_layout_t* layout,
+                         pf_draw_callback_fn cb, void* user, bool* stopped);
+
+// Buffered text walk with alignment and word wrap support.
+static void pf_walk_text_ex(pf_face_t* face, const char* text,
+                            float* x, float* y,
+                            const pf_layout_t* layout,
+                            pf_draw_callback_fn cb, void* user);
 
 // ---- Public API -------------------------------------------------------------
 
@@ -481,7 +548,7 @@ void pf_upload_atlas(pf_atlas_t* atlas, pf_upload_callback_fn cb, void* user)
             return;
         }
 
-        page->dirty = 0;
+        page->dirty = false;
     }
 }
 
@@ -616,7 +683,7 @@ const pf_glyph_t* pf_get_glyph(pf_face_t* face, uint32_t codepoint)
                           bw, bh, page->width,
                           face->scale, face->scale,
                           glyph_index);
-    page->dirty = 1;
+    page->dirty = true;
 
     glyph.page_x   = ax;
     glyph.page_y   = ay;
@@ -675,6 +742,22 @@ void pf_draw_text(pf_face_t* face, const char* text,
         return;
 
     pf_walk_text(face, text, x, y, cb, user);
+}
+
+void pf_draw_text_ex(pf_face_t* face, const char* text,
+                     float* x, float* y,
+                     const pf_layout_t* layout,
+                     pf_draw_callback_fn cb, void* user)
+{
+    PICO_FONT_ASSERT(face != NULL);
+    PICO_FONT_ASSERT(x != NULL);
+    PICO_FONT_ASSERT(y != NULL);
+    PICO_FONT_ASSERT(layout != NULL);
+
+    if (!text)
+        return;
+
+    pf_walk_text_ex(face, text, x, y, layout, cb, user);
 }
 
 void pf_measure_text(pf_face_t* face, const char* text,
@@ -913,7 +996,7 @@ static int pf_page_grow(pf_atlas_page_t* page, int needed_height, int max_height
 
     page->pixels = new_pixels;
     page->height = new_height;
-    page->dirty  = 1;
+    page->dirty  = true;
 
     return 0;
 }
@@ -1064,6 +1147,7 @@ static void pf_walk_text(pf_face_t* face, const char* text,
                          float* x, float* y,
                          pf_draw_callback_fn cb, void* user)
 {
+    float origin_x = *x;
     const char* s = text;
     uint32_t prev_cp = 0;
 
@@ -1071,7 +1155,7 @@ static void pf_walk_text(pf_face_t* face, const char* text,
     {
         if (*s == '\n')
         {
-            *x = 0;
+            *x = origin_x;
             *y += (float)(face->ascent - face->descent + face->line_gap);
             prev_cp = 0;
             s++;
@@ -1128,6 +1212,198 @@ static int pf_measure_cb(const pf_quad_t* quad, void* user)
         st->max_y = quad->y1;
 
     return 1;
+}
+
+static int pf_quad_buf_push(pf_quad_buf_t* buf, const pf_quad_t* q)
+{
+    if (buf->count >= buf->capacity)
+    {
+        size_t new_cap = buf->capacity ? buf->capacity * 2 : 32;
+
+        pf_quad_t* new_items = (pf_quad_t*)PICO_FONT_REALLOC(
+            buf->items, new_cap * sizeof(pf_quad_t));
+
+        if (!new_items)
+            return -1;
+
+        buf->items    = new_items;
+        buf->capacity = new_cap;
+    }
+
+    buf->items[buf->count++] = *q;
+    return 0;
+}
+
+static void pf_emit_line(const pf_quad_buf_t* buf, size_t start, size_t end,
+                         float line_width, const pf_layout_t* layout,
+                         pf_draw_callback_fn cb, void* user, bool* stopped)
+{
+    if (!cb || start >= end || *stopped)
+        return;
+
+    float shift = 0;
+
+    if (layout->wrap_width > 0)
+    {
+        if (layout->alignment == PF_ALIGN_CENTER)
+        {
+            shift = (layout->wrap_width - line_width) * 0.5f;
+        }
+        else if (layout->alignment == PF_ALIGN_RIGHT)
+        {
+            shift = layout->wrap_width - line_width;
+        }
+    }
+
+    for (size_t i = start; i < end; i++)
+    {
+        pf_quad_t q = buf->items[i];
+        q.x0 += shift;
+        q.x1 += shift;
+
+        if (!cb(&q, user))
+        {
+            *stopped = true;
+            return;
+        }
+    }
+}
+
+static void pf_walk_text_ex(pf_face_t* face, const char* text,
+                            float* x, float* y,
+                            const pf_layout_t* layout,
+                            pf_draw_callback_fn cb, void* user)
+{
+    const char* str = text;
+    uint32_t prev_cp = 0;
+    pf_quad_buf_t buf = { NULL, 0, 0 };
+    bool stopped = false;
+    float line_height = (float)(face->ascent - face->descent + face->line_gap);
+    float origin_x = layout->origin_x;
+
+    // Word-wrap break point tracking
+    size_t break_quad_count = 0;
+    float  break_x = origin_x;
+    bool   has_break = false;
+
+    while (*str && !stopped)
+    {
+        if (*str == '\n')
+        {
+            float line_width = *x - origin_x;
+            pf_emit_line(&buf, 0, buf.count, line_width, layout, cb, user, &stopped);
+
+            *x = origin_x;
+            *y += line_height;
+
+            buf.count = 0;
+            prev_cp = 0;
+            has_break = false;
+            str++;
+
+            continue;
+        }
+
+        uint32_t cp = pf_utf8_decode(&str);
+
+        if (cp == 0)
+            break;
+
+        if (prev_cp)
+            *x += pf_get_kerning(face, prev_cp, cp);
+
+        const pf_glyph_t* g = pf_get_glyph(face, cp);
+
+        if (!g)
+        {
+            prev_cp = cp;
+            continue;
+        }
+
+        // Word-wrap check: would this glyph exceed the wrap width?
+        if (layout->wrap_width > 0 &&
+            *x + g->advance_x - origin_x > layout->wrap_width &&
+            *x > origin_x)
+        {
+            if (has_break)
+            {
+                // Emit quads up to the last break point.
+                float break_line_width = break_x - origin_x;
+                pf_emit_line(&buf, 0, break_quad_count, break_line_width,
+                             layout, cb, user, &stopped);
+
+                // Carry remaining quads to the new line.
+                size_t remaining = buf.count - break_quad_count;
+                float dx = origin_x - break_x;
+                float dy = line_height;
+
+                for (size_t i = 0; i < remaining; i++)
+                {
+                    buf.items[i] = buf.items[break_quad_count + i];
+                    buf.items[i].x0 += dx;
+                    buf.items[i].x1 += dx;
+                    buf.items[i].y0 += dy;
+                    buf.items[i].y1 += dy;
+                }
+
+                buf.count = remaining;
+                *x += dx;
+                *y += dy;
+            }
+            else
+            {
+                // No break point; force-break at the current position.
+                float line_width = *x - origin_x;
+                pf_emit_line(&buf, 0, buf.count, line_width, layout, cb, user, &stopped);
+
+                buf.count = 0;
+                *x = origin_x;
+                *y += line_height;
+            }
+
+            has_break = false;
+            prev_cp = 0;
+        }
+
+        // Buffer the quad if the glyph is visible.
+        if (g->page_w > 0 && g->page_h > 0)
+        {
+            pf_quad_t q = {0};
+
+            q.x0   = *x +   (float)g->offset_x;
+            q.y0   = *y +   (float)g->offset_y + (float)face->ascent;
+            q.x1   = q.x0 + (float)g->page_w;
+            q.y1   = q.y0 + (float)g->page_h;
+            q.u0   = g->u0;
+            q.v0   = g->v0;
+            q.u1   = g->u1;
+            q.v1   = g->v1;
+            q.page = g->page;
+
+            pf_quad_buf_push(&buf, &q);
+        }
+
+        *x += g->advance_x;
+
+        // Record break point after whitespace.
+        if (cp == ' ' || cp == '\t')
+        {
+            break_quad_count = buf.count;
+            break_x = *x;
+            has_break = true;
+        }
+
+        prev_cp = cp;
+    }
+
+    // Flush the final line.
+    if (buf.count > 0 && !stopped)
+    {
+        float line_width = *x - origin_x;
+        pf_emit_line(&buf, 0, buf.count, line_width, layout, cb, user, &stopped);
+    }
+
+    PICO_FONT_FREE(buf.items);
 }
 
 #endif // PICO_FONT_IMPLEMENTATION

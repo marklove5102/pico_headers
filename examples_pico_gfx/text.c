@@ -169,35 +169,14 @@ int main(int argc, char *argv[])
     // Generate text geometry using pico_font
     text_batch_t batch = { .count = 0 };
 
+    const char* text = "Hello, World!\nPico Font + Pico GFX";
 
-    #define LINE1 "Hello, World!"
-    #define LINE2 "Pico Font + Pico GFX"
+    float text_w, text_h;
+    pf_measure_text(face, text, &text_w, &text_h);
+    float x = pixel_w / 2.f - text_w / 2.f;
+    float y = pixel_h / 2.f - text_h / 2.f;
 
-    const char* lines[] = { LINE1, LINE2 };
-    int num_lines = 2;
-
-    // Measure total height using the full multiline string
-    float total_h;
-    pf_measure_text(face, LINE1"\n"LINE2, NULL, &total_h);
-
-    pf_font_metrics_t metrics = { 0 };
-    pf_get_font_metrics(face, &metrics);
-
-    float line_height = metrics.line_height;
-    float cur_y = pixel_h / 2.f - total_h / 2.f;
-
-    // Draw each line individually, centered horizontally
-    for (int i = 0; i < num_lines; i++)
-    {
-        float line_w;
-        pf_measure_text(face, lines[i], &line_w, NULL);
-
-        float lx = pixel_w / 2.f - line_w / 2.f;
-        float ly = cur_y;
-        pf_draw_text(face, lines[i], &lx, &ly, draw_callback, &batch);
-
-        cur_y += line_height;
-    }
+    pf_draw_text(face, text, &x, &y, draw_callback, &batch);
 
     // Upload font atlas to GPU texture
     upload_ctx_t upload = { .ctx = ctx, .tex = NULL };
