@@ -34,10 +34,10 @@ typedef struct
 {
     float pos[2];
     float uv[2];
+    float color[4];
 } vertex_t;
 
 typedef float mat4_t[16];
-typedef float rgb_t[3];
 
 #define MAX_VERTICES 4096
 
@@ -45,7 +45,8 @@ typedef struct
 {
     vertex_t vertices[MAX_VERTICES];
     int count;
-} text_batch_t;
+    float color[4];
+} draw_ctx_t;
 
 unsigned char* read_file(const char* filename) {
     FILE *f = fopen(filename, "rb");
@@ -71,22 +72,23 @@ unsigned char* read_file(const char* filename) {
 // Callback invoked per glyph quad by pf_draw_text
 static int draw_callback(const pf_quad_t* quad, void* user)
 {
-    text_batch_t* batch = (text_batch_t*)user;
-    if (batch->count + 6 > MAX_VERTICES) return 0;
+    draw_ctx_t* dc = (draw_ctx_t*)user;
+    if (dc->count + 6 > MAX_VERTICES) return 0;
 
-    vertex_t* v = &batch->vertices[batch->count];
+    vertex_t* v = &dc->vertices[dc->count];
+    const float* c = dc->color;
 
     // Triangle 1
-    v[0] = (vertex_t){ {quad->x0, quad->y0}, {quad->u0, quad->v0} };
-    v[1] = (vertex_t){ {quad->x0, quad->y1}, {quad->u0, quad->v1} };
-    v[2] = (vertex_t){ {quad->x1, quad->y1}, {quad->u1, quad->v1} };
+    v[0] = (vertex_t){ {quad->x0, quad->y0}, {quad->u0, quad->v0}, {c[0], c[1], c[2], c[3]} };
+    v[1] = (vertex_t){ {quad->x0, quad->y1}, {quad->u0, quad->v1}, {c[0], c[1], c[2], c[3]} };
+    v[2] = (vertex_t){ {quad->x1, quad->y1}, {quad->u1, quad->v1}, {c[0], c[1], c[2], c[3]} };
 
     // Triangle 2
-    v[3] = (vertex_t){ {quad->x0, quad->y0}, {quad->u0, quad->v0} };
-    v[4] = (vertex_t){ {quad->x1, quad->y1}, {quad->u1, quad->v1} };
-    v[5] = (vertex_t){ {quad->x1, quad->y0}, {quad->u1, quad->v0} };
+    v[3] = (vertex_t){ {quad->x0, quad->y0}, {quad->u0, quad->v0}, {c[0], c[1], c[2], c[3]} };
+    v[4] = (vertex_t){ {quad->x1, quad->y1}, {quad->u1, quad->v1}, {c[0], c[1], c[2], c[3]} };
+    v[5] = (vertex_t){ {quad->x1, quad->y0}, {quad->u1, quad->v0}, {c[0], c[1], c[2], c[3]} };
 
-    batch->count += 6;
+    dc->count += 6;
     return 1;
 }
 
@@ -167,16 +169,28 @@ int main(int argc, char *argv[])
     pf_face_t* face = pf_create_face(atlas, ttf, 48.0f);
 
     // Generate text geometry using pico_font
-    text_batch_t batch = { .count = 0 };
+    draw_ctx_t draw = { .count = 0, .color = { 1.0f, 1.0f, 1.0f, 1.0f } };
 
-    const char* text = "Hello, World!\nPico Font + Pico GFX";
+    const char* text = ", World!\nPico Font + Pico GFX";
 
     float text_w, text_h;
     pf_measure_text(face, text, &text_w, &text_h);
     float x = pixel_w / 2.f - text_w / 2.f;
     float y = pixel_h / 2.f - text_h / 2.f;
 
-    pf_draw_text(face, text, &x, &y, draw_callback, &batch);
+    draw.color[0] = 1.f;
+    draw.color[1] = 0.f;
+    draw.color[2] = 0.f;
+    draw.color[3] = 1.f;
+
+    pf_draw_text(face, "Hello" , &x, &y, draw_callback, &draw);
+
+    draw.color[0] = 1.f;
+    draw.color[1] = 1.f;
+    draw.color[2] = 1.f;
+    draw.color[3] = 1.f;
+
+    pf_draw_text(face, text, &x, &y, draw_callback, &draw);
 
     // Upload font atlas to GPU texture
     upload_ctx_t upload = { .ctx = ctx, .tex = NULL };
@@ -185,7 +199,7 @@ int main(int argc, char *argv[])
 
     // Create vertex buffer from text geometry
     pg_buffer_t* vertex_buffer = pg_create_vertex_buffer(ctx,
-        PG_USAGE_STATIC, batch.vertices, batch.count, batch.count,
+        PG_USAGE_STATIC, draw.vertices, draw.count, draw.count,
         sizeof(vertex_t));
 
     // Pipeline with alpha blending for text rendering
@@ -200,6 +214,9 @@ int main(int argc, char *argv[])
 
                 [ATTR_text_a_uv]  = { .format = PG_VERTEX_FORMAT_FLOAT2,
                                       .offset = offsetof(vertex_t, uv) },
+
+                [ATTR_text_a_color] = { .format = PG_VERTEX_FORMAT_FLOAT4,
+                                        .offset = offsetof(vertex_t, color) },
             },
         },
 
@@ -230,14 +247,8 @@ int main(int argc, char *argv[])
         }
     };
 
-    fs_block_t fs_block =
-    {
-        .u_color = { 1.f, 1.f, 1.f }
-    };
-
     // Set uniform blocks
     pg_set_uniform_block(shader, "vs_block", &vs_block);
-    pg_set_uniform_block(shader, "fs_block", &fs_block);
 
     // Create sampler and bind texture
     pg_sampler_t* sampler = pg_create_sampler(ctx, NULL);
@@ -276,7 +287,7 @@ int main(int argc, char *argv[])
         pg_begin_pass(ctx, NULL, true);
 
         pg_bind_buffer(ctx, 0, vertex_buffer);
-        pg_draw(ctx, 0, batch.count, 1);
+        pg_draw(ctx, 0, draw.count, 1);
 
         pg_end_pass(ctx);
 

@@ -228,7 +228,7 @@ typedef struct
     float descent;     /**< Distance from baseline to bottom (typically negative). */
     float line_gap;    /**< Extra spacing between lines. */
     float line_height; /**< Recommended line advance (ascent - descent + line_gap). */
-} pf_font_metrics_t;
+} pf_metrics_t_t;
 
 /**
  * @brief Retrieve vertical font metrics for a face.
@@ -236,7 +236,7 @@ typedef struct
  * @param face     Face to query.
  * @param metrics  Receives the metrics. Must not be NULL.
  */
-void pf_get_font_metrics(const pf_face_t* face, pf_font_metrics_t* metrics);
+void pf_get_metrics(const pf_face_t* face, pf_metrics_t_t* metrics);
 
 /**
  * @brief Get the horizontal kerning adjustment between two codepoints.
@@ -710,7 +710,7 @@ const pf_glyph_t* pf_get_glyph(pf_face_t* face, uint32_t codepoint)
     return &atlas->glyphs[index];
 }
 
-void pf_get_font_metrics(const pf_face_t* face, pf_font_metrics_t* metrics)
+void pf_get_metrics(const pf_face_t* face, pf_metrics_t_t* metrics)
 {
     PICO_FONT_ASSERT(face != NULL);
     PICO_FONT_ASSERT(metrics != NULL);
@@ -727,6 +727,7 @@ float pf_get_kerning(const pf_face_t* face, uint32_t cp1, uint32_t cp2)
 
     int g1 = stbtt_FindGlyphIndex(&face->info, (int)cp1);
     int g2 = stbtt_FindGlyphIndex(&face->info, (int)cp2);
+
     return stbtt_GetGlyphKernAdvance(&face->info, g1, g2) * face->scale;
 }
 
@@ -777,22 +778,22 @@ void pf_measure_text(pf_face_t* face, const char* text,
     }
 
     float x = 0, y = 0;
-    pf_measure_state_t st = {0, 0};
-    pf_walk_text(face, text, &x, &y, pf_measure_cb, &st);
+    pf_measure_state_t state = { 0, 0 };
+    pf_walk_text(face, text, &x, &y, pf_measure_cb, &state);
 
     // Account for trailing spaces / empty trailing line by checking cursor.
-    if (x > st.max_x)
-        st.max_x = x;
+    if (x > state.max_x)
+        state.max_x = x;
 
-    // If text was non-empty, the final line's height must be included.
+    // If text was non-empty, the final line's height mustate be included.
     float line_height = (float)(face->ascent - face->descent + face->line_gap);
-    float text_height = (st.max_x > 0 || y > 0) ? y + line_height : 0;
+    float text_height = (state.max_x > 0 || y > 0) ? y + line_height : 0;
 
-    if (st.max_y > text_height)
-        text_height = st.max_y;
+    if (state.max_y > text_height)
+        text_height = state.max_y;
 
     if (out_width)
-        *out_width  = st.max_x;
+        *out_width  = state.max_x;
 
     if (out_height)
         *out_height = text_height;
@@ -841,7 +842,7 @@ static void pf_cache_insert_raw(pf_cache_entry_t* cache, size_t cache_size,
 
         if (cache[slot].key == 0)
         {
-            cache[slot].key       = key;
+            cache[slot].key         = key;
             cache[slot].glyph_index = glyph_index;
             return;
         }
@@ -889,16 +890,16 @@ static size_t pf_atlas_add_page(pf_atlas_t* atlas)
 {
     if (atlas->page_count >= atlas->page_capacity)
     {
-        size_t new_cap = atlas->page_capacity ? atlas->page_capacity * 2 : 4;
+        size_t new_capacity = atlas->page_capacity ? atlas->page_capacity * 2 : 4;
 
-        pf_atlas_page_t* new_arr = (pf_atlas_page_t*)PICO_FONT_REALLOC(atlas->pages,
-            new_cap * sizeof(pf_atlas_page_t));
+        pf_atlas_page_t* new_array = (pf_atlas_page_t*)PICO_FONT_REALLOC(atlas->pages,
+            new_capacity * sizeof(pf_atlas_page_t));
 
-        if (!new_arr)
+        if (!new_array)
             return PICO_FONT_ERROR;
 
-        atlas->pages         = new_arr;
-        atlas->page_capacity = new_cap;
+        atlas->pages         = new_array;
+        atlas->page_capacity = new_capacity;
     }
 
     size_t index = atlas->page_count;
@@ -935,7 +936,11 @@ static int pf_page_alloc(pf_atlas_page_t* page, int w, int h,
         if (ph > page->shelf.shelf_height)
             page->shelf.shelf_height = ph;
 
-        goto place;
+        *out_x = page->shelf.cursor_x;
+        *out_y = page->shelf.cursor_y;
+        page->shelf.cursor_x += pw;
+
+        return 0;
     }
 
     // Start a new shelf.
@@ -948,16 +953,14 @@ static int pf_page_alloc(pf_atlas_page_t* page, int w, int h,
     {
         page->shelf.shelf_height = ph;
 
-        goto place;
+        *out_x = page->shelf.cursor_x;
+        *out_y = page->shelf.cursor_y;
+        page->shelf.cursor_x += pw;
+
+        return 0;
     }
 
     return -1; // page is full
-
-place:
-    *out_x = page->shelf.cursor_x;
-    *out_y = page->shelf.cursor_y;
-    page->shelf.cursor_x += pw;
-    return 0;
 }
 
 /* Try to grow a page's pixel buffer vertically.  Doubles the current height
@@ -1085,16 +1088,16 @@ static size_t pf_glyph_push(pf_atlas_t* atlas, const pf_glyph_t* glyph)
 {
     if (atlas->glyph_count >= atlas->glyph_capacity)
     {
-        size_t new_cap = atlas->glyph_capacity ? atlas->glyph_capacity * 2 : 64;
+        size_t new_capacity = atlas->glyph_capacity ? atlas->glyph_capacity * 2 : 64;
 
-        pf_glyph_t* new_arr = (pf_glyph_t*)PICO_FONT_REALLOC(atlas->glyphs,
-            new_cap * sizeof(pf_glyph_t));
+        pf_glyph_t* new_array = (pf_glyph_t*)PICO_FONT_REALLOC(atlas->glyphs,
+            new_capacity * sizeof(pf_glyph_t));
 
-        if (!new_arr)
+        if (!new_array)
             return PICO_FONT_ERROR;
 
-        atlas->glyphs         = new_arr;
-        atlas->glyph_capacity = new_cap;
+        atlas->glyphs         = new_array;
+        atlas->glyph_capacity = new_capacity;
     }
 
     size_t index = atlas->glyph_count++;
@@ -1218,16 +1221,16 @@ static int pf_quad_buf_push(pf_quad_buf_t* buf, const pf_quad_t* q)
 {
     if (buf->count >= buf->capacity)
     {
-        size_t new_cap = buf->capacity ? buf->capacity * 2 : 32;
+        size_t new_capacity = buf->capacity ? buf->capacity * 2 : 32;
 
         pf_quad_t* new_items = (pf_quad_t*)PICO_FONT_REALLOC(
-            buf->items, new_cap * sizeof(pf_quad_t));
+            buf->items, new_capacity * sizeof(pf_quad_t));
 
         if (!new_items)
             return -1;
 
         buf->items    = new_items;
-        buf->capacity = new_cap;
+        buf->capacity = new_capacity;
     }
 
     buf->items[buf->count++] = *q;
