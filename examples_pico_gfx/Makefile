@@ -19,7 +19,7 @@ else
     endif
 endif
 
-DEPS   = ../pico_gfx.h
+DEPS   = ../pico_gfx.h ../pico_font.h
 
 all: quad scenegraph particles text
 
@@ -35,7 +35,7 @@ scenegraph: scenegraph.o $(DEPS)
 particles: particles.o $(DEPS)
 	$(CC) -o particles particles.o $(CLIBS)
 
-text: text.o $(DEPS)
+text: text.o $(DEPS) ../pico_font.h
 	$(CC) -o text text.o $(CLIBS)
 
 .PHONY: clean
