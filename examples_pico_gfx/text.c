@@ -171,26 +171,41 @@ int main(int argc, char *argv[])
     // Generate text geometry using pico_font
     draw_ctx_t draw = { .count = 0, .color = { 1.0f, 1.0f, 1.0f, 1.0f } };
 
-    const char* text = ", World!\nPico Font + Pico GFX";
+    // Measure both lines to center the text block
+    pf_metrics_t_t metrics;
+    pf_get_metrics(face, &metrics);
 
-    float text_w, text_h;
-    pf_measure_text(face, text, &text_w, &text_h);
-    float x = pixel_w / 2.f - text_w / 2.f;
+    float line1_w, line2_w;
+    pf_measure_text(face, "Hello, World!", &line1_w, NULL);
+    pf_measure_text(face, "Pico Font + Pico GFX", &line2_w, NULL);
+
+    float text_w = line1_w > line2_w ? line1_w : line2_w;
+    float text_h = metrics.line_height * 2;
+
+    float start_x = pixel_w / 2.f - text_w / 2.f;
+    float x = start_x;
     float y = pixel_h / 2.f - text_h / 2.f;
 
+    // Line 1: "Hello" in red, ", World!" in white
     draw.color[0] = 1.f;
     draw.color[1] = 0.f;
     draw.color[2] = 0.f;
     draw.color[3] = 1.f;
 
-    pf_draw_text(face, "Hello" , &x, &y, draw_callback, &draw);
+    pf_draw_text(face, "Hello", &x, &y, draw_callback, &draw);
 
     draw.color[0] = 1.f;
     draw.color[1] = 1.f;
     draw.color[2] = 1.f;
     draw.color[3] = 1.f;
 
-    pf_draw_text(face, text, &x, &y, draw_callback, &draw);
+    pf_draw_text(face, ", World!", &x, &y, draw_callback, &draw);
+
+    // Line 2: manual line break
+    x = start_x;
+    y += metrics.line_height;
+
+    pf_draw_text(face, "Pico Font + Pico GFX", &x, &y, draw_callback, &draw);
 
     // Upload font atlas to GPU texture
     upload_ctx_t upload = { .ctx = ctx, .tex = NULL };

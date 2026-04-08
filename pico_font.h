@@ -12,7 +12,7 @@
  * - On-demand glyph rasterization via stb_truetype.h
  * - Multi-page atlas with automatic page growth and creation
  * - Hash-table glyph cache with automatic rehashing
- * - UTF-8 text layout with kerning and newline support
+ * - UTF-8 text layout with kerning
  * - Dirty-page tracking for efficient GPU uploads
  *
  * Usage:
@@ -179,8 +179,8 @@ const pf_glyph_t* pf_get_glyph(pf_face_t* face, uint32_t codepoint);
  *
  * For each visible glyph the callback receives a screen-space quad with atlas
  * UVs and a page index. Kerning is applied automatically between adjacent
- * codepoints. Newline characters (\n) reset *x to its initial value and
- * advance *y.
+ * codepoints. The caller is responsible for line breaking; use pf_get_metrics()
+ * to obtain the line height for advancing *y between lines.
  *
  * @param face  Face to use.
  * @param text  Null-terminated UTF-8 string.
@@ -272,7 +272,7 @@ typedef struct
  * @brief Lay out and emit quads for a UTF-8 string with extended options.
  *
  * Like pf_draw_text but supports word wrapping and text alignment. The text
- * is laid out starting at (*x, *y). On newline or word-wrap, *x resets to
+ * is laid out starting at (*x, *y). On word-wrap, *x resets to
  * @p layout->origin_x. When @p layout->wrap_width is positive, lines that would
  * exceed that width are broken at the last whitespace boundary (or at the
  * current glyph if no break point exists). Alignment is applied per-line
@@ -781,22 +781,17 @@ void pf_measure_text(pf_face_t* face, const char* text,
     pf_measure_state_t state = { 0, 0 };
     pf_walk_text(face, text, &x, &y, pf_measure_cb, &state);
 
-    // Account for trailing spaces / empty trailing line by checking cursor.
+    // Account for trailing spaces by checking cursor.
     if (x > state.max_x)
         state.max_x = x;
 
-    // If text was non-empty, the final line's height mustate be included.
     float line_height = (float)(face->ascent - face->descent + face->line_gap);
-    float text_height = (state.max_x > 0 || y > 0) ? y + line_height : 0;
-
-    if (state.max_y > text_height)
-        text_height = state.max_y;
 
     if (out_width)
         *out_width  = state.max_x;
 
     if (out_height)
-        *out_height = text_height;
+        *out_height = (state.max_x > 0) ? line_height : 0;
 }
 
 // ---- Internal helpers -------------------------------------------------------
@@ -1150,21 +1145,11 @@ static void pf_walk_text(pf_face_t* face, const char* text,
                          float* x, float* y,
                          pf_draw_callback_fn cb, void* user)
 {
-    float origin_x = *x;
     const char* s = text;
     uint32_t prev_cp = 0;
 
     while (*s)
     {
-        if (*s == '\n')
-        {
-            *x = origin_x;
-            *y += (float)(face->ascent - face->descent + face->line_gap);
-            prev_cp = 0;
-            s++;
-            continue;
-        }
-
         uint32_t cp = pf_utf8_decode(&s);
 
         if (cp == 0)
@@ -1291,22 +1276,6 @@ static void pf_walk_text_ex(pf_face_t* face, const char* text,
 
     while (*str && !stopped)
     {
-        if (*str == '\n')
-        {
-            float line_width = *x - origin_x;
-            pf_emit_line(&buf, 0, buf.count, line_width, layout, cb, user, &stopped);
-
-            *x = origin_x;
-            *y += line_height;
-
-            buf.count = 0;
-            prev_cp = 0;
-            has_break = false;
-            str++;
-
-            continue;
-        }
-
         uint32_t cp = pf_utf8_decode(&str);
 
         if (cp == 0)
