@@ -205,7 +205,7 @@ int main(int argc, char *argv[])
     x = start_x;
     y += metrics.line_height;
 
-    pf_draw_text(face, "Pico Font + Pico GFX", &x, &y, draw_callback, &draw);
+    pf_draw_text(face, "pico_font + pico_gfx", &x, &y, draw_callback, &draw);
 
     // Upload font atlas to GPU texture
     upload_ctx_t upload = { .ctx = ctx, .tex = NULL };

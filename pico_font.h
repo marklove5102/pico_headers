@@ -39,6 +39,8 @@
  *
  *   pf_destroy_face(face);
  *   pf_destroy_atlas(atlas);
+ *
+ *   A full example can be found at: examples_pico_gfx/text.c
  */
 
 #ifndef PICO_FONT_H
