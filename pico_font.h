@@ -1,47 +1,82 @@
 /**
- * @file pico_font.h
- * @brief Dynamic (online) font atlas using stb_truetype.h
- *
- * Single-header library that rasterizes and caches glyphs on demand into a
- * multi-page texture atlas. Each page is a single-channel (alpha) bitmap with
- * a fixed width and a height that grows on demand up to a configurable maximum.
- * When a page is full, a new page is appended automatically. Glyph placement
- * uses row-based shelf packing.
- *
- * Features:
- * - On-demand glyph rasterization via stb_truetype.h
- * - Multi-page atlas with automatic page growth and creation
- * - Hash-table glyph cache with automatic rehashing
- * - UTF-8 text layout with kerning
- * - Dirty-page tracking for efficient GPU uploads
- *
- * Usage:
- *
- *   #define PICO_FONT_IMPLEMENTATION
- *   #include "pico_font.h"
- *
- * You must also have stb_truetype.h available. Define STB_TRUETYPE_IMPLEMENTATION
- * exactly once in your project before including this file with
- * PICO_FONT_IMPLEMENTATION.
- *
- * Quick start:
- *
- *   pf_atlas_t* atlas = pf_create_atlas(512, 512);   // page width, max page height
- *   pf_face_t*  face  = pf_create_face(atlas, ttf_data, 32.0f);  // 32px height
- *
- *   // During rendering (call every frame for each string):
- *   float x = 10, y = 50;
- *   pf_draw_text(face, "Hello!", &x, &y, my_quad_callback, user_ptr);
- *
- *   // The callback receives screen-space quads with atlas UVs and page index.
- *   // After pf_draw_text, upload any dirty atlas pages to the GPU:
- *   pf_upload_atlas(atlas, my_upload_callback, user_ptr);
- *
- *   pf_destroy_face(face);
- *   pf_destroy_atlas(atlas);
- *
- *   A full example can be found at: examples_pico_gfx/text.c
- */
+    @file pico_font.h
+    @brief Dynamic (online) font atlas using stb_truetype.h
+
+    ----------------------------------------------------------------------------
+    Licensing information at end of header
+    ----------------------------------------------------------------------------
+
+    Introduction:
+    -------------
+
+    Single-header library that rasterizes and caches glyphs on demand into a
+    multi-page texture atlas. Each page is a single-channel (alpha) bitmap with
+    a fixed width and a height that grows on demand up to a configurable maximum.
+    When a page is full, a new page is appended automatically. Glyph placement
+    uses row-based shelf packing.
+
+    Features:
+    ---------
+    - Written in C99
+    - On-demand glyph rasterization via stb_truetype.h
+    - Multi-page atlas with automatic page growth and creation
+    - Hash-table glyph cache with automatic rehashing
+    - UTF-8 text layout with kerning
+    - Dirty-page tracking for efficient GPU uploads
+
+    Revision History:
+    -----------------
+
+    - 0.1 (2026/04/11):
+        - On-demand glyph rasterization and storage
+        - Simple text rendering
+
+    Usage:
+    ------
+
+        #define PICO_FONT_IMPLEMENTATION
+        #include "pico_font.h"
+
+    You must also have stb_truetype.h available. Define STB_TRUETYPE_IMPLEMENTATION
+    exactly once in your project after including this file.
+
+    Quick Start:
+    ------------
+
+    pf_atlas_t* atlas = pf_create_atlas(512, 512);   // page width, max page height
+    pf_face_t*  face  = pf_create_face(atlas, ttf_data, 32.0f);  // 32px height
+
+    // During rendering (call every frame for each string):
+    float x = 10, y = 50;
+    pf_draw_text(face, "Hello!", &x, &y, my_quad_callback, user_ptr);
+
+    // The callback receives screen-space quads with atlas UVs and page index.
+    // After pf_draw_text, upload any dirty atlas pages to the GPU:
+    pf_upload_atlas(atlas, my_upload_callback, user_ptr);
+
+    pf_destroy_face(face);
+    pf_destroy_atlas(atlas);
+
+    Full Example:
+    ----------------
+
+    A more or less complete example can be found at: examples_pico_gfx/text.c
+
+    Macro Overrides:
+    -------
+
+    - PICO_FONT_ASSERT  (default: assert)
+    - PICO_FONT_CALLOC  (default: calloc)
+    - PICO_FONT_REALLOC (default: realloc)
+    - PICO_FONT_FRE     (default: free)
+    - PICO_FONT_MEMSET  (default: memset)
+
+    Constant Overrides:
+
+    - PICO_FONT_GLYPH_PADDING    (default: 1)
+    - PICO_FONT_CACHE_INIT_SIZE  (default: 256)
+    - PICO_FONT_INIT_PAGE_HEIGHT (default: 64)
+*/
 
 #ifndef PICO_FONT_H
 #define PICO_FONT_H
@@ -880,9 +915,11 @@ static int pf_page_alloc(pf_atlas_page_t* page, int w, int h,
     return -1; // page is full
 }
 
-/* Try to grow a page's pixel buffer vertically.  Doubles the current height
+/*
+ * Try to grow a page's pixel buffer vertically.  Doubles the current height
  * (starting from 1 when height == 0) until it reaches at least needed_height,
- * capped at max_height.  Returns 0 on success. */
+ * capped at max_height.  Returns 0 on success.
+ */
 static int pf_page_grow(pf_atlas_page_t* page, int needed_height, int max_height)
 {
     PICO_FONT_ASSERT(page != NULL);
@@ -1126,3 +1163,57 @@ static int pf_measure_cb(const pf_quad_t* quad, void* user)
 
 #endif // PICO_FONT_IMPLEMENTATION
 
+/*
+    ----------------------------------------------------------------------------
+    This software is available under two licenses (A) or (B). You may choose
+    either one as you wish:
+    ----------------------------------------------------------------------------
+
+    (A) The zlib License
+
+    Copyright (c) 2026 James McLean
+
+    This software is provided 'as-is', without any express or implied warranty.
+    In no event will the authors be held liable for any damages arising from the
+    use of this software.
+
+    Permission is granted to anyone to use this software for any purpose,
+    including commercial applications, and to alter it and redistribute it
+    freely, subject to the following restrictions:
+
+    1. The origin of this software must not be misrepresented; you must not
+    claim that you wrote the original software. If you use this software in a
+    product, an acknowledgment in the product documentation would be appreciated
+    but is not required.
+
+    2. Altered source versions must be plainly marked as such, and must not be
+    misrepresented as being the original software.
+
+    3. This notice may not be removed or altered from any source distribution.
+
+    ----------------------------------------------------------------------------
+
+    (B) Public Domain (www.unlicense.org)
+
+    This is free and unencumbered software released into the public domain.
+
+    Anyone is free to copy, modify, publish, use, compile, sell, or distribute
+    this software, either in source code form or as a compiled binary, for any
+    purpose, commercial or non-commercial, and by any means.
+
+    In jurisdictions that recognize copyright laws, the author or authors of
+    this software dedicate any and all copyright interest in the software to the
+    public domain. We make this dedication for the benefit of the public at
+    large and to the detriment of our heirs and successors. We intend this
+    dedication to be an overt act of relinquishment in perpetuity of all present
+    and future rights to this software under copyright law.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+    ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+    WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
+
+// EoF
