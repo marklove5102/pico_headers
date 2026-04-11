@@ -224,11 +224,11 @@ void pf_measure_text(pf_face_t* face, const char* text,
  */
 typedef struct
 {
-    float ascent;      /**< Distance from baseline to top of tallest glyph. */
-    float descent;     /**< Distance from baseline to bottom (typically negative). */
-    float line_gap;    /**< Extra spacing between lines. */
-    float line_height; /**< Recommended line advance (ascent - descent + line_gap). */
-} pf_metrics_t_t;
+    float ascent;      //!< Distance from baseline to top of tallest glyph.
+    float descent;     //!< Distance from baseline to bottom (typically negative).
+    float line_gap;    //!< Extra spacing between lines.
+    float line_height; //!< Recommended line advance (ascent - descent + line_gap).
+} pf_metrics_t;
 
 /**
  * @brief Retrieve vertical font metrics for a face.
@@ -236,7 +236,7 @@ typedef struct
  * @param face     Face to query.
  * @param metrics  Receives the metrics. Must not be NULL.
  */
-void pf_get_metrics(const pf_face_t* face, pf_metrics_t_t* metrics);
+void pf_get_metrics(const pf_face_t* face, pf_metrics_t* metrics);
 
 /**
  * @brief Get the horizontal kerning adjustment between two codepoints.
@@ -339,8 +339,8 @@ struct pf_atlas_t
 
     // glyph storage (dynamic array)
     pf_glyph_t* glyphs;
-    size_t glyph_count;
-    size_t glyph_capacity;
+    size_t      glyph_count;
+    size_t      glyph_capacity;
 
     // hash table for fast lookup
     pf_cache_entry_t* cache;
@@ -431,7 +431,7 @@ pf_atlas_t* pf_create_atlas(int page_width, int max_page_height)
 
     atlas->cache_size = PICO_FONT_CACHE_INIT_SIZE;
     atlas->cache = (pf_cache_entry_t*)PICO_FONT_CALLOC(atlas->cache_size,
-                                                       sizeof(pf_cache_entry_t));
+        sizeof(pf_cache_entry_t));
 
     if (!atlas->cache)
     {
@@ -488,7 +488,8 @@ void pf_upload_atlas(pf_atlas_t* atlas, pf_upload_callback_fn cb, void* user)
 }
 
 pf_face_t* pf_create_face(pf_atlas_t* atlas,
-                          const unsigned char* ttf_data, float pixel_height)
+                          const unsigned char* ttf_data,
+                          float pixel_height)
 {
     PICO_FONT_ASSERT(atlas != NULL);
     PICO_FONT_ASSERT(ttf_data != NULL);
@@ -645,7 +646,7 @@ const pf_glyph_t* pf_get_glyph(pf_face_t* face, uint32_t codepoint)
     return &atlas->glyphs[index];
 }
 
-void pf_get_metrics(const pf_face_t* face, pf_metrics_t_t* metrics)
+void pf_get_metrics(const pf_face_t* face, pf_metrics_t* metrics)
 {
     PICO_FONT_ASSERT(face != NULL);
     PICO_FONT_ASSERT(metrics != NULL);
@@ -772,7 +773,8 @@ static int pf_cache_insert(pf_atlas_t* atlas, uint32_t key, size_t glyph_index)
     {
         size_t new_size = atlas->cache_size * 2;
 
-        pf_cache_entry_t* new_cache = (pf_cache_entry_t*)PICO_FONT_CALLOC(new_size, sizeof(pf_cache_entry_t));
+        pf_cache_entry_t* new_cache = (pf_cache_entry_t*)PICO_FONT_CALLOC(new_size,
+            sizeof(pf_cache_entry_t));
 
         if (!new_cache)
             return -1;
@@ -834,7 +836,6 @@ static size_t pf_atlas_add_page(pf_atlas_t* atlas)
     return index;
 }
 
-// FIXME: Replace goto?
 // Try to allocate a rectangle on a specific page. Returns 0 on success.
 static int pf_page_alloc(pf_atlas_page_t* page, int w, int h,
                          int* out_x, int* out_y)

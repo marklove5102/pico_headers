@@ -172,7 +172,7 @@ int main(int argc, char *argv[])
     draw_ctx_t draw = { .count = 0, .color = { 1.0f, 1.0f, 1.0f, 1.0f } };
 
     // Measure both lines to center the text block
-    pf_metrics_t_t metrics;
+    pf_metrics_t metrics;
     pf_get_metrics(face, &metrics);
 
     float line1_w, line2_w;
