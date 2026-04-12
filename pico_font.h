@@ -1,6 +1,6 @@
 /**
     @file pico_font.h
-    @brief Dynamic (online) font atlas using stb_truetype.h
+    @brief A simple, dynamic (online) font atlas using stb_truetype.h
 
     ----------------------------------------------------------------------------
     Licensing information at end of header
@@ -9,12 +9,12 @@
     Introduction:
     -------------
 
-    Single-header library that rasterizes and caches glyphs on demand into a
+    A single-header library that rasterizes and caches glyphs on demand into a
     multi-page texture atlas. Each page is a single-channel (alpha) bitmap with
     a fixed width and a height that grows on demand up to a configurable maximum.
     When a page is full, a new page is appended automatically. Glyph placement
     uses row-based shelf packing. The library also supports basic, single line
-    drawing, but can be customized using the availble metric and measurement
+    drawing, but can be customized using the available metrics and measurement
     functions.
 
     Features:
@@ -22,8 +22,8 @@
     - Written in C99
     - On-demand glyph rasterization via stb_truetype.h
     - Multi-page atlas with automatic page growth and creation
-    - Hash-table glyph cache with automatic rehashing
-    - UTF-8 text layout with kerning
+    - Hashtable glyph cache with automatic rehashing
+    - UTF-8 text layout with kerning (rendering API agnostic)
     - Text measurement and font metrics
     - Dirty-page tracking for efficient GPU uploads
 
@@ -132,6 +132,17 @@ typedef struct
     float u0, v0, u1, v1; // atlas UVs
     size_t page;          // atlas page index
 } pf_quad_t;
+
+/**
+ * @brief Vertical font metrics for a face.
+ */
+typedef struct
+{
+    float ascent;      //!< Distance from baseline to top of tallest glyph.
+    float descent;     //!< Distance from baseline to bottom (typically negative).
+    float line_gap;    //!< Extra spacing between lines.
+    float line_height; //!< Recommended line advance (ascent - descent + line_gap).
+} pf_metrics_t;
 
 /**
  * @brief Callback invoked for each glyph quad during text drawing.
@@ -262,17 +273,6 @@ void pf_measure_text(pf_face_t* face, const char* text,
                      float* out_width, float* out_height);
 
 /**
- * @brief Vertical font metrics for a face.
- */
-typedef struct
-{
-    float ascent;      //!< Distance from baseline to top of tallest glyph.
-    float descent;     //!< Distance from baseline to bottom (typically negative).
-    float line_gap;    //!< Extra spacing between lines.
-    float line_height; //!< Recommended line advance (ascent - descent + line_gap).
-} pf_metrics_t;
-
-/**
  * @brief Retrieve vertical font metrics for a face.
  *
  * @param face     Face to query.
@@ -348,16 +348,16 @@ float pf_get_kerning(const pf_face_t* face, uint32_t cp1, uint32_t cp2);
 // Hash-table entry for glyph cache (open addressing, linear probe).
 typedef struct
 {
-    uint32_t key;           // hash key; 0 = empty slot
-    size_t   glyph_index;   // index into pf_atlas_t.glyphs[]
+    uint32_t key;         // hash key; 0 = empty slot
+    size_t   glyph_index; // index into pf_atlas_t.glyphs[]
 } pf_cache_entry_t;
 
 // Shelf-based packing state.
 typedef struct
 {
-    int cursor_x;           // next free x in current shelf
-    int cursor_y;           // top of current shelf
-    int shelf_height;       // height of current shelf row
+    int cursor_x;     // next free x in current shelf
+    int cursor_y;     // top of current shelf
+    int shelf_height; // height of current shelf row
 } pf_shelf_t;
 
 // A single page in the atlas. Each page has its own bitmap.
@@ -365,7 +365,7 @@ typedef struct
 {
     unsigned char* pixels;
     int            width, height;
-    bool           dirty;       // set to true whenever pixels are modified
+    bool           dirty; // set to true whenever pixels are modified
     pf_shelf_t     shelf;
 } pf_atlas_page_t;
 
@@ -376,8 +376,8 @@ struct pf_atlas_t
     pf_atlas_page_t* pages;
     size_t           page_count;
     size_t           page_capacity;
-    int              page_width;        // fixed width for all pages
-    int              max_page_height;   // maximum height a page may grow to
+    int              page_width;      // fixed width for all pages
+    int              max_page_height; // maximum height a page may grow to
 
     // glyph storage (dynamic array)
     pf_glyph_t* glyphs;
@@ -386,16 +386,16 @@ struct pf_atlas_t
 
     // hash table for fast lookup
     pf_cache_entry_t* cache;
-    size_t            cache_size;  // always power of two
+    size_t            cache_size; // always power of two
 };
 
 // Full face definition (opaque to users).
 struct pf_face_t
 {
     stbtt_fontinfo info;
-    float          size;       // requested pixel height
-    float          scale;      // stbtt scale factor
-    int            ascent;     // scaled ascent in pixels
+    float          size;     // requested pixel height
+    float          scale;    // stbtt scale factor
+    int            ascent;   // scaled ascent in pixels
     int            descent;
     int            line_gap;
     pf_atlas_t*    atlas;
@@ -956,8 +956,8 @@ static int pf_page_grow(pf_atlas_page_t* page, int needed_height, int max_height
 
     // Zero the newly added rows.
     PICO_FONT_MEMSET(new_pixels + (size_t)page->width * (size_t)page->height, 0,
-                                              (size_t)page->width *
-                                              (size_t)(new_height - page->height));
+        (size_t)page->width *
+        (size_t)(new_height - page->height));
 
     page->pixels = new_pixels;
     page->height = new_height;
