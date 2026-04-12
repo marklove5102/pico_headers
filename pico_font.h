@@ -1,6 +1,6 @@
 /**
     @file pico_font.h
-    @brief A simple, dynamic (online) font atlas using stb_truetype.h
+    @brief A simple, dynamic (online) font atlas
 
     ----------------------------------------------------------------------------
     Licensing information at end of header
@@ -63,12 +63,12 @@
     ```
 
     Full Example:
-    ----------------
+    -------------
 
     A more or less complete example can be found at: examples_pico_gfx/text.c
 
     Macro Overrides:
-    -------
+    ----------------
 
     - PICO_FONT_ASSERT  (default: assert)
     - PICO_FONT_CALLOC  (default: calloc)
@@ -77,6 +77,7 @@
     - PICO_FONT_MEMSET  (default: memset)
 
     Constant Overrides:
+    -------------------
 
     - PICO_FONT_GLYPH_PADDING    (default: 1)
     - PICO_FONT_CACHE_INIT_SIZE  (default: 256)
