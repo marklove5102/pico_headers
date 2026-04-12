@@ -70,10 +70,12 @@ unsigned char* read_file(const char* filename) {
 }
 
 // Callback invoked per glyph quad by pf_draw_text
-static int draw_callback(const pf_quad_t* quad, void* user)
+static bool draw_callback(const pf_quad_t* quad, void* user)
 {
     draw_ctx_t* dc = (draw_ctx_t*)user;
-    if (dc->count + 6 > MAX_VERTICES) return 0;
+
+    if (dc->count + 6 > MAX_VERTICES)
+        return false;
 
     vertex_t* v = &dc->vertices[dc->count];
     const float* c = dc->color;
@@ -89,7 +91,7 @@ static int draw_callback(const pf_quad_t* quad, void* user)
     v[5] = (vertex_t){ {quad->x1, quad->y0}, {quad->u1, quad->v0}, {c[0], c[1], c[2], c[3]} };
 
     dc->count += 6;
-    return 1;
+    return true;
 }
 
 typedef struct
@@ -99,10 +101,11 @@ typedef struct
 } upload_ctx_t;
 
 // Callback invoked per dirty atlas page by pf_upload_atlas
-static int upload_callback(size_t page, const unsigned char* pixels,
+static bool upload_callback(size_t page, const unsigned char* pixels,
                            int width, int height, void* user)
 {
     (void)page;
+
     upload_ctx_t* uc = (upload_ctx_t*)user;
 
     if (!uc->tex)
@@ -116,7 +119,7 @@ static int upload_callback(size_t page, const unsigned char* pixels,
         pg_update_texture(uc->tex, (char*)pixels, width, height);
     }
 
-    return 1;
+    return true;
 }
 
 int main(int argc, char *argv[])
@@ -169,7 +172,7 @@ int main(int argc, char *argv[])
     pf_face_t* face = pf_create_face(atlas, ttf, 48.0f);
 
     // Generate text geometry using pico_font
-    draw_ctx_t draw = { .count = 0, .color = { 1.0f, 1.0f, 1.0f, 1.0f } };
+    draw_ctx_t draw = { .color = { 1.0f, 1.0f, 1.0f, 1.0f } };
 
     // Measure both lines to center the text block
     pf_metrics_t metrics;

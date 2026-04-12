@@ -13,7 +13,9 @@
     multi-page texture atlas. Each page is a single-channel (alpha) bitmap with
     a fixed width and a height that grows on demand up to a configurable maximum.
     When a page is full, a new page is appended automatically. Glyph placement
-    uses row-based shelf packing.
+    uses row-based shelf packing. The library also supports basic, single line
+    drawing, but can be customized using the availble metric and measurement
+    functions.
 
     Features:
     ---------
@@ -22,6 +24,7 @@
     - Multi-page atlas with automatic page growth and creation
     - Hash-table glyph cache with automatic rehashing
     - UTF-8 text layout with kerning
+    - Text measurement and font metrics
     - Dirty-page tracking for efficient GPU uploads
 
     Revision History:
@@ -43,6 +46,7 @@
     Quick Start:
     ------------
 
+    ```c
     pf_atlas_t* atlas = pf_create_atlas(512, 512);   // page width, max page height
     pf_face_t*  face  = pf_create_face(atlas, ttf_data, 32.0f);  // 32px height
 
@@ -56,6 +60,7 @@
 
     pf_destroy_face(face);
     pf_destroy_atlas(atlas);
+    ```
 
     Full Example:
     ----------------
@@ -88,7 +93,7 @@
 
 // ---- Types ------------------------------------------------------------------
 
-// Opaque handles -- internals are hidden in the implementation section.
+// Opaque handles
 typedef struct pf_atlas_t pf_atlas_t;
 typedef struct pf_face_t  pf_face_t;
 
@@ -97,9 +102,9 @@ typedef struct pf_face_t  pf_face_t;
  */
 typedef struct
 {
-    uint32_t codepoint;
-    float    size;          // Font pixel height used when rasterizing
-    int      glyph_index;   // stbtt glyph index (0 = missing glyph)
+    uint32_t codepoint;   // Unicode codepoint
+    float    size;        // Font pixel height used when rasterizing
+    int      glyph_index; // stbtt glyph index (0 = missing glyph)
 
     // Position inside page (pixels)
     int page_x, page_y;
@@ -119,7 +124,7 @@ typedef struct
 } pf_glyph_t;
 
 /**
- * @brief Quad emitted by pf_draw_text for each visible glyph.
+ * @brief Quad emitted by pf_draw_text
  */
 typedef struct
 {
@@ -131,9 +136,9 @@ typedef struct
 /**
  * @brief Callback invoked for each glyph quad during text drawing.
  *
- * Return 0 to stop iteration, non-zero to continue.
+ * Return false to stop iteration, true to continue.
  */
-typedef int (*pf_draw_callback_fn)(const pf_quad_t* quad, void* user);
+typedef bool (*pf_draw_callback_fn)(const pf_quad_t* quad, void* user);
 
 /**
  * @brief Callback invoked for each dirty atlas page during pf_upload_atlas.
@@ -141,11 +146,11 @@ typedef int (*pf_draw_callback_fn)(const pf_quad_t* quad, void* user);
  * @param pixels single-channel bitmap (width * height bytes)
  * @param width, bitmap horizontal dimensions
  * @param height bitmap vertical dimensions
- * @return 0 to stop iteration, non-zero to continue. The dirty flag is cleared
- * automatically after a successful (non-zero) return.
+ * @return false to stop iteration, true to continue. The dirty flag is cleared
+ * automatically after a successful (true) return.
  */
-typedef int (*pf_upload_callback_fn)(size_t page, const unsigned char* pixels,
-                                    int width, int height, void* user);
+typedef bool (*pf_upload_callback_fn)(size_t page, const unsigned char* pixels,
+                                      int width, int height, void* user);
 
 // ---- API --------------------------------------------------------------------
 
@@ -161,7 +166,7 @@ extern "C" {
  * (doubling in height) as glyphs are added, up to @p max_page_height. Once a
  * page is full, a new page is appended automatically.
  *
- * @param page_width      Width of each atlas page in pixels.
+ * @param page_width       Width of each atlas page in pixels.
  * @param max_page_height  Maximum height each page may grow to in pixels.
  * @return A new atlas, or NULL on allocation failure.
  */
@@ -449,7 +454,7 @@ static void pf_walk_text(pf_face_t* face, const char* text,
                          pf_draw_callback_fn cb, void* user);
 
 // Quad callback used by pf_measure_text to track bounding box extents.
-static int pf_measure_cb(const pf_quad_t* quad, void* user);
+static bool pf_measure_cb(const pf_quad_t* quad, void* user);
 
 // ---- Public API -------------------------------------------------------------
 
@@ -463,7 +468,7 @@ pf_atlas_t* pf_create_atlas(int page_width, int max_page_height)
     if (!atlas)
         return NULL;
 
-    atlas->page_width        = page_width;
+    atlas->page_width      = page_width;
     atlas->max_page_height = max_page_height;
 
     atlas->cache_size = PICO_FONT_CACHE_INIT_SIZE;
@@ -501,27 +506,6 @@ void pf_destroy_atlas(pf_atlas_t* atlas)
     PICO_FONT_FREE(atlas->glyphs);
     PICO_FONT_FREE(atlas->cache);
     PICO_FONT_FREE(atlas);
-}
-
-void pf_upload_atlas(pf_atlas_t* atlas, pf_upload_callback_fn cb, void* user)
-{
-    if (!atlas || !cb)
-        return;
-
-    for (size_t i = 0; i < atlas->page_count; i++)
-    {
-        pf_atlas_page_t* page = &atlas->pages[i];
-
-        if (!page->dirty)
-            continue;
-
-        if (!cb(i, page->pixels, page->width, page->height, user))
-        {
-            return;
-        }
-
-        page->dirty = false;
-    }
 }
 
 pf_face_t* pf_create_face(pf_atlas_t* atlas,
@@ -683,27 +667,6 @@ const pf_glyph_t* pf_get_glyph(pf_face_t* face, uint32_t codepoint)
     return &atlas->glyphs[index];
 }
 
-void pf_get_metrics(const pf_face_t* face, pf_metrics_t* metrics)
-{
-    PICO_FONT_ASSERT(face != NULL);
-    PICO_FONT_ASSERT(metrics != NULL);
-
-    metrics->ascent      = (float)face->ascent;
-    metrics->descent     = (float)face->descent;
-    metrics->line_gap    = (float)face->line_gap;
-    metrics->line_height = (float)(face->ascent - face->descent + face->line_gap);
-}
-
-float pf_get_kerning(const pf_face_t* face, uint32_t cp1, uint32_t cp2)
-{
-    PICO_FONT_ASSERT(face != NULL);
-
-    int g1 = stbtt_FindGlyphIndex(&face->info, (int)cp1);
-    int g2 = stbtt_FindGlyphIndex(&face->info, (int)cp2);
-
-    return stbtt_GetGlyphKernAdvance(&face->info, g1, g2) * face->scale;
-}
-
 void pf_draw_text(pf_face_t* face, const char* text,
                   float* x, float* y,
                   pf_draw_callback_fn cb, void* user)
@@ -716,6 +679,27 @@ void pf_draw_text(pf_face_t* face, const char* text,
         return;
 
     pf_walk_text(face, text, x, y, cb, user);
+}
+
+void pf_upload_atlas(pf_atlas_t* atlas, pf_upload_callback_fn cb, void* user)
+{
+    if (!atlas || !cb)
+        return;
+
+    for (size_t i = 0; i < atlas->page_count; i++)
+    {
+        pf_atlas_page_t* page = &atlas->pages[i];
+
+        if (!page->dirty)
+            continue;
+
+        if (!cb(i, page->pixels, page->width, page->height, user))
+        {
+            return;
+        }
+
+        page->dirty = false;
+    }
 }
 
 void pf_measure_text(pf_face_t* face, const char* text,
@@ -751,6 +735,27 @@ void pf_measure_text(pf_face_t* face, const char* text,
         *out_height = (state.max_x > 0) ? line_height : 0;
 }
 
+void pf_get_metrics(const pf_face_t* face, pf_metrics_t* metrics)
+{
+    PICO_FONT_ASSERT(face != NULL);
+    PICO_FONT_ASSERT(metrics != NULL);
+
+    metrics->ascent      = (float)face->ascent;
+    metrics->descent     = (float)face->descent;
+    metrics->line_gap    = (float)face->line_gap;
+    metrics->line_height = (float)(face->ascent - face->descent + face->line_gap);
+}
+
+float pf_get_kerning(const pf_face_t* face, uint32_t cp1, uint32_t cp2)
+{
+    PICO_FONT_ASSERT(face != NULL);
+
+    int g1 = stbtt_FindGlyphIndex(&face->info, (int)cp1);
+    int g2 = stbtt_FindGlyphIndex(&face->info, (int)cp2);
+
+    return stbtt_GetGlyphKernAdvance(&face->info, g1, g2) * face->scale;
+}
+
 // ---- Internal helpers -------------------------------------------------------
 
 static uint32_t pf_hash_key(uint32_t cp, float size)
@@ -766,6 +771,7 @@ static size_t pf_cache_lookup(const pf_atlas_t* atlas, uint32_t key)
 {
     size_t mask = atlas->cache_size - 1;
     size_t index  = (size_t)(key) & mask;
+
     for (size_t i = 0; i < atlas->cache_size; i++)
     {
         size_t slot = (index + i) & mask;
@@ -800,12 +806,14 @@ static void pf_cache_insert_raw(pf_cache_entry_t* cache, size_t cache_size,
         }
     }
     // Should never happen if load factor is kept in check.
+    PICO_FONT_ASSERT(false);
 }
 
 static int pf_cache_insert(pf_atlas_t* atlas, uint32_t key, size_t glyph_index)
 {
     // Grow if load factor > 0.7
     size_t used = atlas->glyph_count; // approximate
+
     if (used * 10 > atlas->cache_size * 7)
     {
         size_t new_size = atlas->cache_size * 2;
@@ -1003,6 +1011,7 @@ static int pf_atlas_alloc(pf_atlas_t* atlas, int w, int h,
 
         // Shelf packing failed -- try growing the page height.
         int needed = page->shelf.cursor_y + page->shelf.shelf_height + ph;
+
         if (pf_page_grow(page, needed, atlas->max_page_height) == 0)
         {
             pf_page_recompute_uvs(atlas, page_index);
@@ -1148,7 +1157,7 @@ static void pf_walk_text(pf_face_t* face, const char* text,
     }
 }
 
-static int pf_measure_cb(const pf_quad_t* quad, void* user)
+static bool pf_measure_cb(const pf_quad_t* quad, void* user)
 {
     pf_measure_state_t* st = (pf_measure_state_t*)user;
 
@@ -1158,7 +1167,7 @@ static int pf_measure_cb(const pf_quad_t* quad, void* user)
     if (quad->y1 > st->max_y)
         st->max_y = quad->y1;
 
-    return 1;
+    return true;
 }
 
 #endif // PICO_FONT_IMPLEMENTATION
